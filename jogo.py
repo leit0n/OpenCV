@@ -1,4 +1,5 @@
 import pygame, sys
+import os
 from configs import *
 from cartas import Deck, Hand
 from player import Player, Dealer
@@ -32,11 +33,22 @@ class Game:
         # Bank
         self.bank = Bank(initial_amount=1000, font=self.font)
 
+        # Money animation
+        self.img_dinheiro = pygame.image.load(os.path.join(os.path.dirname(__file__), "money", "dinheiro.png")).convert_alpha()
+        self.animating_dinheiro = False
+        self.dinheiro_pos = [0, 0]
+        self.dinheiro_target = [self.base_width // 2, self.base_height // 2]
+        self.dinheiro_speed = 10
+
     def start_round(self):
         # Deduct bet first
         if not self.bank.place_bet():
             self.message = "Not enough money to bet!"
             return
+
+        # Start money animation from bank to center
+        self.animating_dinheiro = True
+        self.dinheiro_pos = [self.base_width - 220, 70 + 55]  # from bank position
 
         self.player.reset()
         self.dealer.reset()
@@ -131,15 +143,24 @@ class Game:
         result = self.determine_winner()
 
         # Handle payouts
+        payout_amount = 0
         for i, hand in enumerate(self.player.hands):
             p_best = hand.best_value()
             d_best = self.dealer.hands[0].best_value()
             if hand.is_bust():
                 continue
             elif self.dealer.hands[0].is_bust() or p_best > d_best:
+                payout_amount += self.bank.bet * 2
                 self.bank.payout(2)
             elif hand.is_blackjack() and not self.dealer.hands[0].is_blackjack():
+                payout_amount += self.bank.bet * 2.5
                 self.bank.payout(2.5)
+
+        # Start money animation from center to bank if payout
+        if payout_amount > 0:
+            self.animating_dinheiro = True
+            self.dinheiro_pos = [self.base_width // 2, self.base_height // 2]  # from center
+            self.dinheiro_target = [self.base_width - 220, 70 + 55]  # to bank position
 
         self.message = result
 
@@ -178,7 +199,7 @@ class Game:
         for rank in RANKS:
             for suit in SUITS:
                 filename = f"{rank}_of_{SUITS[suit].lower()}.png"
-                path = os.path.join(folder, filename)
+                path = os.path.join(os.path.dirname(__file__), folder, filename)
                 if os.path.isfile(path):
                     img = pygame.image.load(path).convert_alpha()
                     img = pygame.transform.smoothscale(img, (CARD_WIDTH, CARD_HEIGHT))
@@ -230,6 +251,22 @@ class Game:
         # Title
         title = self.big_font.render("Casino Clássico - Blackjack", True, (255, 255, 255))
         surf.blit(title, (self.base_width // 2 - title.get_width() // 2, 10))
+
+        # Update money animation
+        if self.animating_dinheiro:
+            dx = self.dinheiro_target[0] - self.dinheiro_pos[0]
+            dy = self.dinheiro_target[1] - self.dinheiro_pos[1]
+            dist = (dx**2 + dy**2)**0.5
+            if dist < self.dinheiro_speed:
+                self.dinheiro_pos = self.dinheiro_target[:]
+                self.animating_dinheiro = False
+            else:
+                self.dinheiro_pos[0] += self.dinheiro_speed * dx / dist
+                self.dinheiro_pos[1] += self.dinheiro_speed * dy / dist
+
+        # Draw animating dinheiro
+        if self.animating_dinheiro:
+            surf.blit(self.img_dinheiro, self.dinheiro_pos)
 
         # Draw dealer
         dealer_x = 50
